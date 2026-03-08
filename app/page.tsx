@@ -7,10 +7,11 @@ import { HeroSection } from "@/components/hero-section";
 import { StatsBar } from "@/components/stats-bar";
 import { ModelSimulator } from "@/components/model-simulator";
 import { mergeIntoHistory, getDeviceHistory } from "@/lib/local-history";
-import { Wifi, WifiOff, RefreshCw } from "lucide-react";
+import { Wifi, WifiOff, RefreshCw, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const POLL_INTERVAL_MS = 60_000;
+const STALE_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
 
 /** Feed the latest reading for each device through the prediction API */
 async function buildDeviceCards(
@@ -61,7 +62,14 @@ export default function DashboardPage() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [online, setOnline] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
   const mountedRef = useRef(true);
+
+  // Tick every 15s to re-evaluate staleness badges without a full fetch
+  useEffect(() => {
+    const ticker = setInterval(() => setNow(Date.now()), 15_000);
+    return () => clearInterval(ticker);
+  }, []);
 
   const fetchData = useCallback(async (showRefreshing = false) => {
     if (showRefreshing) setRefreshing(true);
@@ -219,13 +227,32 @@ export default function DashboardPage() {
           </div>
         ) : (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {devices.map((device) => (
-              <DeviceCard
-                key={device.deviceId}
-                device={device}
-                history={deviceHistories.get(device.deviceId) ?? []}
-              />
-            ))}
+            {devices.map((device) => {
+              const readingAge = device.receivedAt
+                ? Date.now() - new Date(device.receivedAt).getTime()
+                : device.timestamp
+                ? Date.now() - new Date(device.timestamp).getTime()
+                : 0;
+              const isStale = readingAge > STALE_THRESHOLD_MS;
+              return (
+                <div key={device.deviceId} className="relative">
+                  {isStale && (
+                    <div className="absolute inset-x-0 -top-0 z-10 flex items-center gap-1.5 rounded-t-xl border border-amber-500/30 bg-amber-500/10 px-3 py-1.5">
+                      <Clock className="h-3 w-3 text-amber-400" />
+                      <span className="text-[11px] font-medium text-amber-400">
+                        Stale — last seen {Math.floor(readingAge / 60000)}m ago · waiting for new uplink
+                      </span>
+                    </div>
+                  )}
+                  <div className={cn(isStale && "opacity-60 mt-7")}>
+                    <DeviceCard
+                      device={device}
+                      history={deviceHistories.get(device.deviceId) ?? []}
+                    />
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </section>

@@ -4,7 +4,7 @@ import { useState } from "react";
 import {
   FlaskConical, X, Play, Loader2, AlertTriangle,
   CheckCircle2, ChevronRight, Beaker, Activity,
-  Droplets, Zap, Eye, TriangleAlert
+  Droplets, Zap, Eye, TriangleAlert, Thermometer
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,7 @@ interface SimInputs {
   tds: number;
   turbidity: number;
   conductivity: number;
+  temperature: number;
 }
 
 const PARAMS: Param[] = [
@@ -86,6 +87,18 @@ const PARAMS: Param[] = [
     color: "text-emerald-400",
     defaultVal: 400,
   },
+  {
+    key: "temperature",
+    label: "Temperature",
+    unit: "°C",
+    min: 0,
+    max: 50,
+    step: 0.1,
+    safeRange: [10, 30],
+    icon: <Thermometer className="h-4 w-4" />,
+    color: "text-orange-400",
+    defaultVal: 25.0,
+  },
 ];
 
 function isSafe(key: keyof SimInputs, val: number): boolean {
@@ -116,6 +129,7 @@ export function ModelSimulator() {
     tds: 250,
     turbidity: 2.0,
     conductivity: 400,
+    temperature: 25.0,
   });
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<(WaterPrediction & { engine?: string }) | null>(null);
@@ -151,7 +165,7 @@ export function ModelSimulator() {
   }
 
   function reset() {
-    setInputs({ ph: 7.0, tds: 250, turbidity: 2.0, conductivity: 400 });
+    setInputs({ ph: 7.0, tds: 250, turbidity: 2.0, conductivity: 400, temperature: 25.0 });
     setResult(null);
     setError(null);
     setRawJson("");
