@@ -1,11 +1,15 @@
 /**
  * GET /api/sensor-data
- * Always fetches fresh data from the SmartPark relay first.
- * Falls back to the local in-memory store (populated by /api/webhook) if relay is down.
+ * Priority order:
+ *   1. MongoDB (our persisted readings, most reliable)
+ *   2. SmartPark relay (TTN live feed, used as seed when DB is empty)
+ *   3. Empty response
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getReadings } from "@/lib/store";
+import { connectDB } from "@/lib/db";
+import { Reading } from "@/models/Reading";
+import { SensorReading } from "@/types";
 
 const RELAY_URL =
   process.env.RELAY_URL ||
@@ -13,15 +17,68 @@ const RELAY_URL =
 
 export const dynamic = "force-dynamic";
 
+/** Map a MongoDB Reading document → SensorReading shape the frontend expects */
+function toSensorReading(doc: InstanceType<typeof Reading>): SensorReading {
+  return {
+    id:             doc.readingId,
+    timestamp:      doc.timestamp.toISOString(),
+    receivedAt:     doc.receivedAt.toISOString(),
+    deviceId:       doc.deviceId,
+    deviceName:     doc.deviceName,
+    temperature:    doc.temperature,
+    ph:             doc.ph,
+    tds:            doc.tds,
+    turbidity:      doc.turbidity,
+    conductivity:   doc.conductivity,
+    rssi:           doc.rssi ?? null,
+    snr:            doc.snr ?? null,
+    spreadingFactor: doc.spreadingFactor ?? null,
+  };
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const limit = Math.min(parseInt(searchParams.get("limit") || "100", 10), 200);
+  const limit = Math.min(parseInt(searchParams.get("limit") || "100", 10), 500);
 
-  // Always try relay first (this is where real TTN data lives)
+  // ── 1. Try MongoDB ───────────────────────────────────────────────────────
   try {
-    const res = await fetch(`${RELAY_URL}?limit=${limit}`, {
-      cache: "no-store",
-    });
+    await connectDB();
+    const docs = await Reading.find()
+      .sort({ receivedAt: -1 })
+      .limit(limit)
+      .lean();
+
+    if (docs.length > 0) {
+      const data = docs.map((doc) => ({
+        id:              doc.readingId,
+        timestamp:       (doc.timestamp as Date).toISOString(),
+        receivedAt:      (doc.receivedAt as Date).toISOString(),
+        deviceId:        doc.deviceId,
+        deviceName:      doc.deviceName,
+        temperature:     doc.temperature ?? null,
+        ph:              doc.ph ?? null,
+        tds:             doc.tds ?? null,
+        turbidity:       doc.turbidity ?? null,
+        conductivity:    doc.conductivity ?? null,
+        rssi:            doc.rssi ?? null,
+        snr:             doc.snr ?? null,
+        spreadingFactor: doc.spreadingFactor ?? null,
+      }));
+
+      return NextResponse.json({
+        status: "ok",
+        source: "mongodb",
+        count: data.length,
+        data,
+      });
+    }
+  } catch (dbErr) {
+    console.warn("[sensor-data] MongoDB unavailable, falling back to relay:", dbErr);
+  }
+
+  // ── 2. Relay fallback (seeds DB on first run) ────────────────────────────
+  try {
+    const res = await fetch(`${RELAY_URL}?limit=${limit}`, { cache: "no-store" });
     if (res.ok) {
       const json = await res.json();
       if (Array.isArray(json.data) && json.data.length > 0) {
@@ -34,15 +91,9 @@ export async function GET(req: NextRequest) {
       }
     }
   } catch {
-    // relay unreachable — fall through to local store
+    // relay also unreachable
   }
 
-  // Fallback: local in-memory store (populated when webhook is configured directly)
-  const readings = getReadings(limit);
-  return NextResponse.json({
-    status: "ok",
-    source: "local",
-    count: readings.length,
-    data: readings,
-  });
+  return NextResponse.json({ status: "ok", source: "empty", count: 0, data: [] });
 }
+

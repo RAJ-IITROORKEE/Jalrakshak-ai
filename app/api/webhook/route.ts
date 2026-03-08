@@ -10,8 +10,10 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { addReading } from "@/lib/store";
 import { SensorReading } from "@/types";
+import { connectDB } from "@/lib/db";
+import { Reading } from "@/models/Reading";
+import { Device } from "@/models/Device";
 
 const TTN_SECRET = process.env.TTN_WEBHOOK_SECRET || null;
 
@@ -89,9 +91,56 @@ export async function POST(req: NextRequest) {
       ((settings?.data_rate as Record<string, unknown>)?.lora as Record<string, unknown>)?.spreading_factor as number ?? null,
   };
 
-  addReading(reading);
+  // ── Persist to MongoDB ───────────────────────────────────────────────────
+  try {
+    await connectDB();
 
-  console.log(`[JalRakshak] ✅ Webhook received | device=${deviceId}`);
+    // Upsert the reading (idempotent on readingId)
+    await Reading.findOneAndUpdate(
+      { readingId: reading.id },
+      {
+        readingId:       reading.id,
+        deviceId:        reading.deviceId,
+        deviceName:      reading.deviceName,
+        timestamp:       new Date(reading.timestamp),
+        receivedAt:      new Date(reading.receivedAt),
+        temperature:     reading.temperature,
+        ph:              reading.ph,
+        tds:             reading.tds,
+        turbidity:       reading.turbidity,
+        conductivity:    reading.conductivity,
+        rssi:            reading.rssi ?? null,
+        snr:             reading.snr ?? null,
+        spreadingFactor: reading.spreadingFactor ?? null,
+      },
+      { upsert: true, new: true }
+    );
+
+    // Upsert device (update last-seen + latest sensor values)
+    await Device.findOneAndUpdate(
+      { deviceId },
+      {
+        deviceId,
+        deviceName:       deviceId,
+        lastSeen:         new Date(),
+        lastPh:           reading.ph,
+        lastTds:          reading.tds,
+        lastTemperature:  reading.temperature,
+        lastTurbidity:    reading.turbidity,
+        lastConductivity: reading.conductivity,
+        rssi:             reading.rssi ?? null,
+        snr:              reading.snr ?? null,
+        spreadingFactor:  reading.spreadingFactor ?? null,
+        $inc:             { totalReadings: 1 },
+      },
+      { upsert: true, new: true }
+    );
+
+    console.log(`[JalRakshak] ✅ Saved to MongoDB | device=${deviceId}`);
+  } catch (dbErr) {
+    console.error("[JalRakshak] ⚠ MongoDB save failed:", dbErr);
+    // Don't fail the webhook — TTN won't retry on 5xx if we return ok below
+  }
 
   return NextResponse.json(
     { status: "ok", id: reading.id },
