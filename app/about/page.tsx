@@ -45,11 +45,8 @@ const team = [
     branch: "Metallurgical & Materials Engineering",
     institute: "IIT Roorkee",
     role: "Leader",
+    roleColor: "bg-amber-500/10 text-amber-500 border-amber-500/30",
     github: "https://github.com/RAJ-IITROORKEE",
-    avatarBg: "bg-primary/15",
-    avatarRing: "ring-primary/30",
-    avatarText: "text-primary",
-    badgeBg: "bg-amber-500/10 text-amber-500 border-amber-500/30",
   },
   {
     initials: "MR",
@@ -59,11 +56,8 @@ const team = [
     branch: "Mechanical & Industrial Engineering",
     institute: "IIT Roorkee",
     role: "Member",
+    roleColor: "bg-primary/10 text-primary border-primary/30",
     github: null,
-    avatarBg: "bg-purple-500/15",
-    avatarRing: "ring-purple-500/30",
-    avatarText: "text-purple-400",
-    badgeBg: "bg-purple-500/10 text-purple-400 border-purple-500/30",
   },
 ];
 
@@ -193,20 +187,19 @@ export default function AboutPage() {
           {team.map((member) => (
             <Card key={member.name} className="border-border/60 overflow-hidden">
               <CardContent className="p-0">
-                {/* Coloured top accent strip */}
-                <div className={`h-1 w-full ${member.avatarBg.replace("/15", "")}`} />
-                <div className="p-5 space-y-4">
-                  <div className="flex items-start gap-4">
-                    {/* Avatar */}
-                    <div
-                      className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-full ring-2 text-base font-bold select-none ${member.avatarBg} ${member.avatarRing} ${member.avatarText}`}
-                    >
+                {/* Accent strip */}
+                <div className="h-1 w-full bg-primary/40" />
+
+                <div className="flex flex-col gap-4 p-5">
+                  {/* Avatar + info */}
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-primary/10 ring-2 ring-primary/30 text-base font-bold text-primary select-none">
                       {member.initials}
                     </div>
-                    <div className="min-w-0 flex-1 pt-0.5">
+                    <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-1.5 mb-1">
                         <span className="font-bold text-foreground">{member.name}</span>
-                        <Badge className={`text-[10px] border ${member.badgeBg}`}>
+                        <Badge className={`text-[10px] border ${member.roleColor}`}>
                           {member.role}
                         </Badge>
                       </div>
@@ -216,7 +209,7 @@ export default function AboutPage() {
                     </div>
                   </div>
 
-                  {/* Contact row */}
+                  {/* Contact row — always same height */}
                   <div className="flex flex-wrap gap-2 pt-1 border-t border-border/40">
                     <a
                       href={`mailto:${member.email}`}
@@ -225,7 +218,7 @@ export default function AboutPage() {
                       <Mail className="h-3 w-3" />
                       {member.email}
                     </a>
-                    {member.github && (
+                    {member.github ? (
                       <a
                         href={member.github}
                         target="_blank"
@@ -235,6 +228,11 @@ export default function AboutPage() {
                         <Github className="h-3 w-3" />
                         GitHub
                       </a>
+                    ) : (
+                      <span className="flex items-center gap-1.5 rounded-md border border-transparent px-2.5 py-1 text-[11px] text-muted-foreground/0 select-none pointer-events-none">
+                        <Github className="h-3 w-3" />
+                        GitHub
+                      </span>
                     )}
                   </div>
                 </div>
