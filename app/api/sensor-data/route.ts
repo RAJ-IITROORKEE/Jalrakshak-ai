@@ -140,127 +140,124 @@ export async function GET() {
 }
 
 // ── Relay sync ─────────────────────────────────────────────────────────────
-// Polls the SmartPark relay for the latest TTN uplink and saves it to MongoDB.
-// Uses a deterministic readingId ({deviceId}-{received_at}) for deduplication.
+// Polls the SmartPark relay which returns already-processed reading objects:
+//   GET /api/ttn/jalrakshak-ai?limit=20
+//   → { status, count, data: [{ id, deviceId, ph, tds, temperature, ... }] }
+// Each entry is deduplicated via its UUID `id` as the readingId.
 async function syncFromRelay() {
   const relayUrl = process.env.RELAY_URL;
   if (!relayUrl) return;
 
   try {
-    const res = await fetch(relayUrl, { next: { revalidate: 0 } });
+    const res = await fetch(`${relayUrl}?limit=20`, { next: { revalidate: 0 } });
     if (!res.ok) return;
 
-    const body = await res.json() as Record<string, unknown>;
-    // Relay might wrap in { data: ... } or return the payload directly
-    const payload: Record<string, unknown> = (body?.data ?? body) as Record<string, unknown>;
-    if (!payload || typeof payload !== "object") return;
+    const body = await res.json() as { status: string; count: number; data: RelayEntry[] };
+    const entries = body?.data;
+    if (!Array.isArray(entries) || entries.length === 0) return;
 
-    const deviceId: string =
-      ((payload?.end_device_ids as Record<string, unknown>)?.device_id as string) ||
-      "unknown-device";
+    for (const entry of entries) {
+      const readingId: string = entry.id || `${entry.deviceId}-${entry.receivedAt || entry.timestamp}`;
 
-    const receivedAt: string =
-      (payload?.received_at as string) || new Date().toISOString();
+      // Already in DB? Skip.
+      const exists = await prisma.reading.findUnique({ where: { readingId } });
+      if (exists) continue;
 
-    // Deterministic ID — prevents duplicate inserts on repeated polls
-    const readingId = `${deviceId}-${receivedAt}`;
+      const deviceId: string = entry.deviceId || "unknown-device";
+      const receivedAt: string = entry.receivedAt || entry.timestamp || new Date().toISOString();
 
-    // Already in DB? Skip.
-    const exists = await prisma.reading.findUnique({ where: { readingId } });
-    if (exists) return;
+      const temperature: number | null = entry.temperature ?? null;
+      const tds: number | null = entry.tds ?? null;
+      const ph: number | null = entry.ph ?? null;
+      const turbidity: number = entry.turbidity ?? Number.parseFloat((Math.random() * (10 - 1) + 1).toFixed(2));
+      const conductivity: number | null = entry.conductivity ?? (tds === null ? null : Number.parseFloat((tds * 2).toFixed(2)));
+      const rssi: number | null = entry.rssi ?? null;
+      const snr: number | null = entry.snr ?? null;
+      const spreadingFactor: number | null = entry.spreadingFactor ?? null;
 
-    const decoded = ((payload?.uplink_message as Record<string, unknown>)?.decoded_payload ?? {}) as Record<string, unknown>;
-    const rawPayload = (payload?.uplink_message as Record<string, unknown>)?.frm_payload as string | null ?? null;
-    const rxMeta = (((payload?.uplink_message as Record<string, unknown>)?.rx_metadata) as unknown[]) ?? [];
-    const firstMeta = (rxMeta[0] as Record<string, unknown>) ?? {};
-    const settings = ((payload?.uplink_message as Record<string, unknown>)?.settings ?? {}) as Record<string, unknown>;
+      let pred: ReturnType<typeof predictWaterQuality> | null = null;
+      if (ph != null && tds != null && conductivity != null && turbidity != null) {
+        try { pred = predictWaterQuality({ ph, tds, conductivity, turbidity }); } catch { /* ignore */ }
+      }
 
-    let temperature: number | null = (decoded.temperature as number) ?? null;
-    let tds: number | null = (decoded.tds as number) ?? null;
-    let ph: number | null = (decoded.ph as number) ?? null;
+      await prisma.reading.create({
+        data: {
+          readingId,
+          deviceId,
+          deviceName:           deviceId,
+          timestamp:            new Date(receivedAt),
+          receivedAt:           new Date(receivedAt),
+          temperature,
+          ph,
+          tds,
+          turbidity,
+          conductivity,
+          rssi,
+          snr,
+          spreadingFactor,
+          predictionStatus:     pred?.water_status ?? null,
+          predictionScore:      pred?.safety_score ?? null,
+          predictionRiskLevel:  pred?.risk_level ?? null,
+          predictionConfidence: pred?.confidence ?? null,
+          predictionCauses:     pred?.possible_causes ?? [],
+          predictionActions:    pred?.recommended_actions ?? [],
+          predictionFutureRisk: pred?.future_risk ?? null,
+        },
+      });
 
-    if ((temperature === null || tds === null || ph === null) && rawPayload) {
-      try {
-        const bytes = Buffer.from(rawPayload, "base64");
-        if (bytes.length >= 6) {
-          temperature = ((bytes[0] << 8) | bytes[1]) / 10;
-          tds = (bytes[2] << 8) | bytes[3];
-          ph = ((bytes[4] << 8) | bytes[5]) / 100;
-        }
-      } catch { /* ignore */ }
+      await prisma.device.upsert({
+        where: { deviceId },
+        create: {
+          deviceId,
+          deviceName:       deviceId,
+          isActive:         true,
+          lastSeen:         new Date(receivedAt),
+          lastPh:           ph,
+          lastTds:          tds,
+          lastTemperature:  temperature,
+          lastTurbidity:    turbidity,
+          lastConductivity: conductivity,
+          rssi,
+          snr,
+          spreadingFactor,
+          totalReadings:    1,
+        },
+        update: {
+          lastSeen:         new Date(receivedAt),
+          lastPh:           ph,
+          lastTds:          tds,
+          lastTemperature:  temperature,
+          lastTurbidity:    turbidity,
+          lastConductivity: conductivity,
+          rssi,
+          snr,
+          spreadingFactor,
+          totalReadings:    { increment: 1 },
+        },
+      });
+
+      console.log(`[sensor-data] ✅ Synced from relay | device=${deviceId} | pH=${ph} | TDS=${tds}`);
     }
-
-    const turbidity = Number.parseFloat((Math.random() * (10 - 1) + 1).toFixed(2));
-    const conductivity = tds != null ? Number.parseFloat((tds * 2).toFixed(2)) : null;
-    const rssi = (firstMeta.rssi as number) ?? null;
-    const snr = (firstMeta.snr as number) ?? null;
-    const spreadingFactor = (((settings?.data_rate as Record<string, unknown>)?.lora as Record<string, unknown>)?.spreading_factor as number) ?? null;
-
-    let pred: ReturnType<typeof predictWaterQuality> | null = null;
-    if (ph != null && tds != null && conductivity != null && turbidity != null) {
-      try { pred = predictWaterQuality({ ph, tds, conductivity, turbidity }); } catch { /* ignore */ }
-    }
-
-    await prisma.reading.create({
-      data: {
-        readingId,
-        deviceId,
-        deviceName:           deviceId,
-        timestamp:            new Date(receivedAt),
-        receivedAt:           new Date(receivedAt),
-        temperature,
-        ph,
-        tds,
-        turbidity,
-        conductivity,
-        rssi,
-        snr,
-        spreadingFactor,
-        predictionStatus:     pred?.water_status ?? null,
-        predictionScore:      pred?.safety_score ?? null,
-        predictionRiskLevel:  pred?.risk_level ?? null,
-        predictionConfidence: pred?.confidence ?? null,
-        predictionCauses:     pred?.possible_causes ?? [],
-        predictionActions:    pred?.recommended_actions ?? [],
-        predictionFutureRisk: pred?.future_risk ?? null,
-      },
-    });
-
-    await prisma.device.upsert({
-      where: { deviceId },
-      create: {
-        deviceId,
-        deviceName:       deviceId,
-        isActive:         true,
-        lastSeen:         new Date(receivedAt),
-        lastPh:           ph,
-        lastTds:          tds,
-        lastTemperature:  temperature,
-        lastTurbidity:    turbidity,
-        lastConductivity: conductivity,
-        rssi,
-        snr,
-        spreadingFactor,
-        totalReadings:    1,
-      },
-      update: {
-        lastSeen:         new Date(receivedAt),
-        lastPh:           ph,
-        lastTds:          tds,
-        lastTemperature:  temperature,
-        lastTurbidity:    turbidity,
-        lastConductivity: conductivity,
-        rssi,
-        snr,
-        spreadingFactor,
-        totalReadings:    { increment: 1 },
-      },
-    });
-
-    console.log(`[sensor-data] ✅ Synced from relay | device=${deviceId}`);
   } catch (err) {
     // Relay unavailable or parse failure — non-fatal, just use existing DB data
     console.warn("[sensor-data] Relay sync skipped:", (err as Error).message);
   }
+}
+
+interface RelayEntry {
+  id: string;
+  timestamp: string;
+  receivedAt: string;
+  deviceId: string;
+  deviceName?: string;
+  temperature: number | null;
+  tds: number | null;
+  ph: number | null;
+  turbidity: number | null;
+  conductivity: number | null;
+  rssi: number | null;
+  snr: number | null;
+  spreadingFactor: number | null;
+  rawPayload?: string | null;
 }
 

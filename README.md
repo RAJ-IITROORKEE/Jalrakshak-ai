@@ -97,7 +97,8 @@ Real-time water quality monitoring powered by LoRaWAN IoT sensor nodes and an AI
 | Charts | Recharts |
 | Icons | Lucide React |
 | Theming | next-themes (dark / light) |
-| Database | MongoDB via Mongoose v9 |
+| Database | MongoDB (Atlas) via **Prisma ORM v6** |
+| Admin UI | shadcn/ui (Radix primitives, sidebar, cards, accordion) |
 | IoT Network | The Things Network (TTN) — LoRaWAN |
 | Hardware | ESP32 + LoRa SX1276 |
 | AI Engine (primary) | Python FastAPI + Random Forest (scikit-learn, 3,276 samples) — [GitHub: Jalrakshak-ai-model](https://github.com/RAJ-IITROORKEE/Jalrakshak-ai-model) |
@@ -111,33 +112,46 @@ Real-time water quality monitoring powered by LoRaWAN IoT sensor nodes and an AI
 ```
 hydro-monitor-app/
 ├── app/
-│   ├── page.tsx              # Main dashboard — polls sensor data, runs predictions
-│   ├── layout.tsx            # Root layout — Navbar, Footer, ThemeProvider
-│   ├── about/page.tsx        # Project info, features, team
-│   ├── contact/page.tsx      # Contact page
-│   ├── docs/page.tsx         # Developer docs (TTN decoder, webhook, API, hardware)
+│   ├── (main)/               # Public route group — wraps pages with Navbar + Footer
+│   │   ├── layout.tsx
+│   │   ├── page.tsx              # Live dashboard — device cards, stats, model simulator
+│   │   ├── about/page.tsx        # Project info, features, team
+│   │   ├── contact/page.tsx      # Contact page
+│   │   └── docs/page.tsx         # Developer docs (TTN decoder, webhook, API, hardware)
+│   ├── admin/                # ⚙️ Admin panel — no Navbar/Footer, sidebar layout
+│   │   ├── layout.tsx            # SidebarProvider + AppSidebar + SiteHeader
+│   │   ├── dashboard/page.tsx    # Device CRUD — add/edit/delete IoT devices
+│   │   └── live-data/page.tsx    # Live webhook log — accordion raw JSON, auto-refresh
+│   ├── layout.tsx            # Root layout — ThemeProvider only
 │   └── api/
-│       ├── webhook/route.ts      # POST — receives TTN uplink, saves to MongoDB
-│       ├── sensor-data/route.ts  # GET  — returns readings (MongoDB → relay → empty)
-│       ├── predict/route.ts      # POST — runs water quality AI prediction
-│       └── db-test/route.ts      # GET  — MongoDB connectivity health check
+│       ├── webhook/route.ts          # POST — receives TTN uplink, saves to MongoDB
+│       ├── sensor-data/route.ts      # GET  — readings (MongoDB → relay sync → empty)
+│       ├── predict/route.ts          # POST — AI water quality prediction
+│       ├── db-test/route.ts          # GET  — MongoDB health check
+│       ├── seed-device/route.ts      # POST — seeds a demo device into DB
+│       └── admin/
+│           ├── devices/route.ts      # GET/POST — list + create devices
+│           ├── devices/[id]/route.ts # GET/PUT/DELETE — single device CRUD
+│           └── live-data/route.ts    # GET — last 100 readings for log viewer
 ├── components/
+│   ├── admin/
+│   │   ├── app-sidebar.tsx       # Sidebar nav (Dashboard, Devices, Live Data)
+│   │   └── site-header.tsx       # Admin topbar
 │   ├── device-card.tsx           # Per-device card (readings + prediction + chart)
 │   ├── hero-section.tsx          # Dashboard hero banner
 │   ├── model-simulator.tsx       # Interactive AI model tester with sliders
 │   ├── sensor-history-chart.tsx  # Recharts line chart for reading history
-│   ├── stats-bar.tsx             # Summary stats (total/safe/alert devices, readings)
+│   ├── stats-bar.tsx             # Summary stats (total/safe/alert/readings)
 │   ├── navbar.tsx / footer.tsx
 │   └── ui/                       # Radix-based shadcn components
 ├── lib/
-│   ├── db.ts                 # Mongoose connection singleton (globalThis cache)
+│   ├── prisma.ts             # PrismaClient singleton (globalThis cache)
 │   ├── predict.ts            # TypeScript AI fallback engine
 │   ├── store.ts              # In-memory reading store (dev/legacy)
 │   ├── local-history.ts      # localStorage history (up to 500 readings)
 │   └── utils.ts              # cn() Tailwind class helper
-├── models/
-│   ├── Reading.ts            # Mongoose model — one doc per TTN uplink
-│   └── Device.ts             # Mongoose model — one doc per IoT device (upserted)
+├── prisma/
+│   └── schema.prisma         # Device + Reading models (MongoDB via Prisma)
 └── types/index.ts            # SensorReading, WaterPrediction, DeviceReading interfaces
 ```
 
@@ -179,22 +193,28 @@ Frontend (browser, polling every 30 s)
 
 | Method | Route | Description |
 |--------|-------|-------------|
-| `POST` | `/api/webhook` | TTN uplink receiver. Optionally validated via `X-TTN-Secret` header. Parses decoded payload or raw Base64 bytes. Writes to MongoDB. |
-| `GET` | `/api/sensor-data?limit=N` | Returns sensor readings. Max `limit` is 500. Priority: MongoDB → relay → empty. Response includes `source`, `count`, `totalReadings`, `lastDataAt`. |
+| `POST` | `/api/webhook` | TTN uplink receiver. Optionally validated via `X-TTN-Secret` header. Parses decoded payload or raw Base64 bytes. Writes to MongoDB via Prisma. |
+| `GET` | `/api/sensor-data` | Returns devices + per-device history. Syncs up to 20 latest relay entries before responding. |
 | `POST` | `/api/predict` | Accepts `{ ph, tds, conductivity, turbidity }`. Returns `WaterPrediction` with `engine: "railway"` or `"typescript"`. |
-| `GET` | `/api/db-test` | Returns `{ db, devices, readings }` — quick connectivity check. **Remove before production.** |
+| `GET` | `/api/db-test` | Returns `{ db, devices, readings }` — quick connectivity check. |
+| `GET` | `/api/admin/devices` | List all devices. |
+| `POST` | `/api/admin/devices` | Create a new device entry. |
+| `PUT` | `/api/admin/devices/[id]` | Update a device (name, location, etc.). |
+| `DELETE` | `/api/admin/devices/[id]` | Remove a device and all its readings. |
+| `GET` | `/api/admin/live-data?limit=N` | Last N readings (max 200) across all devices, newest first. |
 
 All `/api/*` routes expose CORS headers (`Access-Control-Allow-Origin: *`) to support the TTN webhook and the SmartPark relay.
 
 ### MongoDB Models
 
+Managed via **Prisma ORM** (`prisma/schema.prisma`). Run `npx prisma db push` after cloning to sync the schema.
+
 **`readings` collection** — one document per TTN uplink  
-Fields: `readingId` (UUID, unique), `deviceId`, `deviceName`, `timestamp`, `receivedAt`, `temperature`, `ph`, `tds`, `turbidity`, `conductivity`, `rssi`, `snr`, `spreadingFactor`  
-TTL index on `receivedAt` — auto-deleted after **30 days**.
+Fields: `readingId` (UUID, unique), `deviceId`, `deviceName`, `timestamp`, `receivedAt`, `temperature`, `ph`, `tds`, `turbidity`, `conductivity`, `rssi`, `snr`, `spreadingFactor`, prediction fields (`predictionStatus`, `predictionScore`, `predictionRiskLevel`, `predictionConfidence`, `predictionCauses[]`, `predictionActions[]`, `predictionFutureRisk`).
 
 **`devices` collection** — one document per IoT device  
-Fields: `deviceId` (unique), `deviceName`, `lastSeen`, `lastPh/Tds/Temperature/Turbidity/Conductivity`, `rssi`, `snr`, `spreadingFactor`, `totalReadings` (counter), `createdAt`, `updatedAt`  
-Upserted (not inserted) on every incoming webhook.
+Fields: `deviceId` (unique), `deviceName`, `location`, `description`, `isActive`, `lastSeen`, `lastPh/Tds/Temperature/Turbidity/Conductivity`, `rssi`, `snr`, `spreadingFactor`, `totalReadings` (counter), `createdAt`, `updatedAt`  
+Upserted (not inserted) on every incoming webhook — also manageable via the Admin Panel.
 
 ### AI Prediction Engine
 
@@ -310,12 +330,39 @@ For local development without a live TTN device, the dashboard seeds from the Sm
 
 ## Pages
 
+### Public
+
 | Route | Description |
 |---|---|
 | `/` | Live dashboard — device cards, stats bar, auto-refresh, model simulator |
 | `/about` | Project overview, feature list, hardware details, team info |
 | `/docs` | Developer documentation — TTN decoder, webhook setup, API reference, hardware wiring |
 | `/contact` | Contact information |
+
+### Admin Panel
+
+> **No authentication is implemented yet.** The `/admin/*` routes are currently open. Add an auth layer (e.g. NextAuth.js or Clerk) before deploying to production.
+
+Navigate to **`/admin/dashboard`** in the browser to open the admin panel.
+
+| Route | Description |
+|---|---|
+| `/admin/dashboard` | **Device Manager** — view all registered IoT devices, add new devices (ID, name, location, description), edit or delete existing ones. Each device card shows the last-seen timestamp, cumulative reading count, and latest sensor values. |
+| `/admin/live-data` | **Live Webhook Log** — real-time stream of the last 100 incoming readings from all devices. Each row shows device ID (colour-coded), sensor pills (pH / TDS / temp / turbidity), AI prediction badge, and timestamp. Click any row to expand the full raw JSON. Auto-refreshes every 15 s with an on/off toggle. |
+
+#### Adding a New Device
+
+1. Go to `/admin/dashboard`.
+2. Click **Add Device** (top-right).
+3. Fill in **Device ID** (must match the `device_id` TTN sends — e.g. `hydro-monitor-01`), display name, optional location and description.
+4. Click **Save**. The device will appear in the dashboard and start receiving readings as soon as TTN sends an uplink.
+
+#### Monitoring Live Data
+
+1. Go to `/admin/live-data`.
+2. Readings arrive automatically every time TTN posts an uplink to `/api/webhook` (or when `/api/sensor-data` syncs from the relay).
+3. Use **Auto (15s)** to keep the log refreshing automatically, or click **Refresh** for an immediate pull.
+4. Expand any row to inspect the full stored reading object including AI prediction fields.
 
 ---
 
