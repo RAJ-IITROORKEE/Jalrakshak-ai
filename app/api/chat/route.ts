@@ -80,10 +80,13 @@ export async function POST(req: NextRequest) {
       throw new Error("No response from AI");
     }
 
+    const userMessageId = crypto.randomUUID();
+    const assistantMessageId = crypto.randomUUID();
+
     // Save user message to database
     await prisma.chatMessage.create({
       data: {
-        messageId: crypto.randomUUID(),
+        messageId: userMessageId,
         deviceId,
         role: "user",
         content: message,
@@ -94,7 +97,7 @@ export async function POST(req: NextRequest) {
     // Save assistant response to database
     await prisma.chatMessage.create({
       data: {
-        messageId: crypto.randomUUID(),
+        messageId: assistantMessageId,
         deviceId,
         role: "assistant",
         content: assistantMessage,
@@ -107,6 +110,8 @@ export async function POST(req: NextRequest) {
       message: assistantMessage,
       tokensUsed: completion.usage?.total_tokens,
       model: completion.model,
+      userMessageId,
+      assistantMessageId,
     });
   } catch (error: any) {
     console.error("Error in chat completion:", error);

@@ -31,3 +31,38 @@ export async function GET(
     );
   }
 }
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ deviceId: string }> }
+) {
+  try {
+    const { deviceId } = await params;
+    const body = await req.json().catch(() => ({}));
+    const sessionMessageIds = Array.isArray(body?.sessionMessageIds)
+      ? (body.sessionMessageIds as string[])
+      : [];
+
+    if (sessionMessageIds.length === 0) {
+      return NextResponse.json(
+        { error: "sessionMessageIds are required" },
+        { status: 400 }
+      );
+    }
+
+    const result = await prisma.chatMessage.deleteMany({
+      where: {
+        deviceId,
+        messageId: { in: sessionMessageIds },
+      },
+    });
+
+    return NextResponse.json({ deletedCount: result.count });
+  } catch (error) {
+    console.error("Error deleting chat session:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}

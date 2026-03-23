@@ -3,6 +3,7 @@
 import { cn } from "@/lib/utils";
 import { Bot, User } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface ChatMessageProps {
   role: "user" | "assistant" | "system";
@@ -42,15 +43,41 @@ export function ChatMessage({ role, content, timestamp }: ChatMessageProps) {
             )}
           >
             <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
               components={{
                 p: ({ children }) => (
                   <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>
+                ),
+                h2: ({ children }) => (
+                  <h2 className="mb-2 mt-4 text-base font-semibold first:mt-0">{children}</h2>
+                ),
+                h3: ({ children }) => (
+                  <h3 className="mb-2 mt-3 text-sm font-semibold first:mt-0">{children}</h3>
                 ),
                 ul: ({ children }) => (
                   <ul className="my-2 ml-4 list-disc space-y-1">{children}</ul>
                 ),
                 ol: ({ children }) => (
                   <ol className="my-2 ml-4 list-decimal space-y-1">{children}</ol>
+                ),
+                table: ({ children }) => (
+                  <div className="my-3 overflow-x-auto rounded-lg border border-border">
+                    <table className="w-full border-collapse text-xs">{children}</table>
+                  </div>
+                ),
+                thead: ({ children }) => <thead className="bg-muted/60">{children}</thead>,
+                th: ({ children }) => (
+                  <th className="border-b border-border px-3 py-2 text-left font-semibold">{children}</th>
+                ),
+                td: ({ children }) => <td className="border-b border-border/60 px-3 py-2">{children}</td>,
+                tr: ({ children }) => <tr className="align-top">{children}</tr>,
+                blockquote: ({ children }) => (
+                  <blockquote className="my-2 border-l-2 border-primary/40 pl-3 text-muted-foreground">
+                    {children}
+                  </blockquote>
+                ),
+                pre: ({ children }) => (
+                  <pre className="my-2 overflow-x-auto rounded-lg bg-muted p-3 text-xs">{children}</pre>
                 ),
                 strong: ({ children }) => (
                   <strong className="font-semibold">{children}</strong>

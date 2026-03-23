@@ -10,14 +10,29 @@ interface ChatInputProps {
   onSend: (message: string) => void;
   disabled?: boolean;
   placeholder?: string;
+  value?: string;
+  onValueChange?: (value: string) => void;
+  submitLabel?: string;
 }
 
 export function ChatInput({
   onSend,
   disabled = false,
   placeholder = "Ask about pH trends, safety concerns, recommendations...",
+  value,
+  onValueChange,
+  submitLabel = "Send message",
 }: ChatInputProps) {
-  const [message, setMessage] = useState("");
+  const [internalMessage, setInternalMessage] = useState("");
+  const isControlled = typeof value === "string";
+  const message = isControlled ? value : internalMessage;
+
+  const setMessage = (nextValue: string) => {
+    if (!isControlled) {
+      setInternalMessage(nextValue);
+    }
+    onValueChange?.(nextValue);
+  };
 
   const handleSend = () => {
     if (message.trim() && !disabled) {
@@ -52,6 +67,8 @@ export function ChatInput({
           onClick={handleSend}
           disabled={disabled || !message.trim()}
           size="icon"
+          aria-label={submitLabel}
+          title={submitLabel}
           className="h-[44px] w-[44px] shrink-0 rounded-xl"
         >
           {disabled ? (

@@ -1,12 +1,21 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { ChatMessage } from "./chat-message";
 import { ChatInput } from "./chat-input";
 import { ChatSuggestions } from "./chat-suggestions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Sheet,
   SheetContent,
@@ -19,11 +28,15 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock3,
+  Copy,
   Database,
+  Droplets,
   Loader2,
   Menu,
+  Pencil,
   Plus,
   Search,
+  Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -40,6 +53,7 @@ interface ChatSession {
   startedAt: Date;
   updatedAt: Date;
   messages: Message[];
+  persistedMessageIds: string[];
 }
 
 interface DeviceInfo {
@@ -68,6 +82,13 @@ interface DeviceContextResponse {
 interface ChatInterfaceProps {
   deviceId: string;
   device: DeviceInfo;
+}
+
+interface HistoryMessageResponse {
+  messageId: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  timestamp: string;
 }
 
 const SESSION_BREAK_MS = 45 * 60 * 1000;
@@ -107,36 +128,42 @@ function buildSessionTitle(messages: Message[]): string {
   return `${trimmed.slice(0, 48)}...`;
 }
 
-function groupMessagesIntoSessions(messages: Message[]): ChatSession[] {
+function groupMessagesIntoSessions(messages: HistoryMessageResponse[]): ChatSession[] {
   if (messages.length === 0) return [];
 
   const ordered = [...messages].sort(
-    (a, b) => a.timestamp.getTime() - b.timestamp.getTime()
+    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
   );
   const sessions: ChatSession[] = [];
   let current: ChatSession | null = null;
   let previousAt = 0;
 
   for (const message of ordered) {
-    const currentAt = message.timestamp.getTime();
+    const messageDate = new Date(message.timestamp);
+    const currentAt = messageDate.getTime();
     const shouldSplit =
-      current &&
-      message.role === "user" &&
-      currentAt - previousAt > SESSION_BREAK_MS;
+      current && message.role === "user" && currentAt - previousAt > SESSION_BREAK_MS;
 
     if (!current || shouldSplit) {
       current = {
-        id: `session-${message.id}`,
+        id: `session-${message.messageId}`,
         title: "New chat",
-        startedAt: message.timestamp,
-        updatedAt: message.timestamp,
+        startedAt: messageDate,
+        updatedAt: messageDate,
         messages: [],
+        persistedMessageIds: [],
       };
       sessions.push(current);
     }
 
-    current.messages.push(message);
-    current.updatedAt = message.timestamp;
+    current.messages.push({
+      id: message.messageId,
+      role: message.role,
+      content: message.content,
+      timestamp: messageDate,
+    });
+    current.persistedMessageIds.push(message.messageId);
+    current.updatedAt = messageDate;
     previousAt = currentAt;
   }
 
@@ -156,7 +183,18 @@ function emptySession(): ChatSession {
     startedAt: now,
     updatedAt: now,
     messages: [],
+    persistedMessageIds: [],
   };
+}
+
+function withUpdatedSession(
+  sessions: ChatSession[],
+  targetSessionId: string,
+  updater: (session: ChatSession) => ChatSession
+): ChatSession[] {
+  return sessions
+    .map((session) => (session.id === targetSessionId ? updater(session) : session))
+    .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
 }
 
 export function ChatInterface({ deviceId, device }: ChatInterfaceProps) {
@@ -167,6 +205,10 @@ export function ChatInterface({ deviceId, device }: ChatInterfaceProps) {
   const [context, setContext] = useState<DeviceContextResponse | null>(null);
   const [search, setSearch] = useState("");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [composerValue, setComposerValue] = useState("");
+  const [isDeletingSessionId, setIsDeletingSessionId] = useState<string | null>(null);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [pendingDeleteSession, setPendingDeleteSession] = useState<ChatSession | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const activeSession = useMemo(
@@ -203,12 +245,7 @@ export function ChatInterface({ deviceId, device }: ChatInterfaceProps) {
         ]);
 
         const historyData = (await historyRes.json()) as {
-          messages?: Array<{
-            messageId: string;
-            role: "user" | "assistant" | "system";
-            content: string;
-            timestamp: string;
-          }>;
+          messages?: HistoryMessageResponse[];
         };
 
         if (contextRes.ok) {
@@ -217,14 +254,7 @@ export function ChatInterface({ deviceId, device }: ChatInterfaceProps) {
         }
 
         if (historyData.messages && historyData.messages.length > 0) {
-          const parsedMessages = historyData.messages.map((m) => ({
-            id: m.messageId,
-            role: m.role,
-            content: m.content,
-            timestamp: new Date(m.timestamp),
-          }));
-          const nextSessions = groupMessagesIntoSessions(parsedMessages);
-
+          const nextSessions = groupMessagesIntoSessions(historyData.messages);
           setSessions(nextSessions);
           setActiveSessionId(nextSessions[0]?.id ?? "");
         } else {
@@ -254,14 +284,29 @@ export function ChatInterface({ deviceId, device }: ChatInterfaceProps) {
     setSessions((prev) => [fresh, ...prev]);
     setActiveSessionId(fresh.id);
     setSearch("");
+    setComposerValue("");
     setIsSidebarOpen(false);
   };
 
-  const handleSendMessage = async (content: string) => {
+  const copyAssistantMessage = async (message: Message) => {
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopiedMessageId(message.id);
+      window.setTimeout(() => {
+        setCopiedMessageId((current) => (current === message.id ? null : current));
+      }, 1800);
+    } catch (error) {
+      console.error("Failed to copy message:", error);
+    }
+  };
+
+  const sendMessage = async (content: string) => {
     if (!activeSession || isLoading) return;
 
     const targetSessionId = activeSession.id;
-    const previousMessages = activeSession.messages;
+    const historyForApi = activeSession.messages.filter(
+      (message) => message.role === "user" || message.role === "assistant"
+    );
     const userMessage: Message = {
       id: crypto.randomUUID(),
       role: "user",
@@ -270,21 +315,18 @@ export function ChatInterface({ deviceId, device }: ChatInterfaceProps) {
     };
 
     setSessions((prev) =>
-      prev
-        .map((session) => {
-          if (session.id !== targetSessionId) return session;
-          const updatedMessages = [...session.messages, userMessage];
-          return {
-            ...session,
-            title:
-              session.title === "New chat"
-                ? buildSessionTitle(updatedMessages)
-                : session.title,
-            updatedAt: userMessage.timestamp,
-            messages: updatedMessages,
-          };
-        })
-        .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+      withUpdatedSession(prev, targetSessionId, (session) => {
+        const updatedMessages = [...session.messages, userMessage];
+        return {
+          ...session,
+          title:
+            session.title === "New chat"
+              ? buildSessionTitle(updatedMessages)
+              : session.title,
+          updatedAt: userMessage.timestamp,
+          messages: updatedMessages,
+        };
+      })
     );
 
     setIsLoading(true);
@@ -296,9 +338,7 @@ export function ChatInterface({ deviceId, device }: ChatInterfaceProps) {
         body: JSON.stringify({
           deviceId,
           message: content,
-          conversationHistory: previousMessages.filter(
-            (message) => message.role === "user" || message.role === "assistant"
-          ),
+          conversationHistory: historyForApi,
         }),
       });
 
@@ -307,26 +347,35 @@ export function ChatInterface({ deviceId, device }: ChatInterfaceProps) {
         throw new Error(errorData.error || "Failed to get response");
       }
 
-      const data = (await res.json()) as { message: string };
+      const data = (await res.json()) as {
+        message: string;
+        userMessageId?: string;
+        assistantMessageId?: string;
+      };
       const assistantMessage: Message = {
-        id: crypto.randomUUID(),
+        id: data.assistantMessageId || crypto.randomUUID(),
         role: "assistant",
         content: data.message,
         timestamp: new Date(),
       };
 
       setSessions((prev) =>
-        prev
-          .map((session) =>
-            session.id === targetSessionId
-              ? {
-                  ...session,
-                  updatedAt: assistantMessage.timestamp,
-                  messages: [...session.messages, assistantMessage],
-                }
-              : session
-          )
-          .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+        withUpdatedSession(prev, targetSessionId, (session) => {
+          const nextPersistedIds = [...session.persistedMessageIds];
+          if (data.userMessageId) {
+            nextPersistedIds.push(data.userMessageId);
+          }
+          if (data.assistantMessageId) {
+            nextPersistedIds.push(data.assistantMessageId);
+          }
+
+          return {
+            ...session,
+            updatedAt: assistantMessage.timestamp,
+            messages: [...session.messages, assistantMessage],
+            persistedMessageIds: nextPersistedIds,
+          };
+        })
       );
     } catch (error: unknown) {
       const message =
@@ -342,26 +391,73 @@ export function ChatInterface({ deviceId, device }: ChatInterfaceProps) {
       };
 
       setSessions((prev) =>
-        prev
-          .map((session) =>
-            session.id === targetSessionId
-              ? {
-                  ...session,
-                  updatedAt: errorMessage.timestamp,
-                  messages: [...session.messages, errorMessage],
-                }
-              : session
-          )
-          .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+        withUpdatedSession(prev, targetSessionId, (session) => ({
+          ...session,
+          updatedAt: errorMessage.timestamp,
+          messages: [...session.messages, errorMessage],
+        }))
       );
     } finally {
       setIsLoading(false);
     }
   };
 
+  const handleDeleteSession = async (session: ChatSession) => {
+    if (isDeletingSessionId || session.messages.length === 0) return;
+
+    setIsDeletingSessionId(session.id);
+
+    try {
+      if (session.persistedMessageIds.length > 0) {
+        const response = await fetch(`/api/chat/history/${deviceId}`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionMessageIds: session.persistedMessageIds }),
+        });
+
+        if (!response.ok) {
+          const data = (await response.json()) as { error?: string };
+          throw new Error(data.error || "Failed to delete chat");
+        }
+      }
+
+      setSessions((prev) => {
+        const next = prev.filter((item) => item.id !== session.id);
+        if (next.length === 0) {
+          const fresh = emptySession();
+          setActiveSessionId(fresh.id);
+          return [fresh];
+        }
+
+        if (activeSessionId === session.id) {
+          setActiveSessionId(next[0].id);
+        }
+
+        return next;
+      });
+    } catch (error) {
+      console.error("Failed to delete chat session:", error);
+    } finally {
+      setIsDeletingSessionId(null);
+      setPendingDeleteSession(null);
+    }
+  };
+
   const sidebarContent = (
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
       <div className="border-b border-sidebar-border p-4">
+        <Link
+          href="/"
+          className="mb-4 inline-flex items-center gap-2.5 font-bold text-foreground transition-opacity hover:opacity-80"
+        >
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/30">
+            <Droplets className="h-4.5 w-4.5 text-primary" />
+          </span>
+          <span className="gradient-text text-lg font-extrabold tracking-tight">
+            JalRakshak<span className="text-primary">.AI</span>
+          </span>
+        </Link>
+
         <Button
           onClick={createNewChat}
           className="w-full justify-start gap-2 bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90"
@@ -443,30 +539,52 @@ export function ChatInterface({ deviceId, device }: ChatInterfaceProps) {
             const isActive = session.id === activeSessionId;
 
             return (
-              <button
+              <div
                 key={session.id}
-                type="button"
-                onClick={() => {
-                  setActiveSessionId(session.id);
-                  setIsSidebarOpen(false);
-                }}
                 className={cn(
-                  "w-full cursor-pointer rounded-lg border border-transparent px-3 py-2 text-left transition-colors",
+                  "group rounded-lg border border-transparent transition-colors",
                   isActive
                     ? "bg-sidebar-accent text-sidebar-accent-foreground"
                     : "hover:bg-sidebar-accent/70"
                 )}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <p className="truncate text-sm font-medium">{session.title}</p>
-                  <span className="shrink-0 text-[11px] text-muted-foreground">
-                    {formatSidebarTime(session.updatedAt)}
-                  </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveSessionId(session.id);
+                    setIsSidebarOpen(false);
+                  }}
+                  className="w-full cursor-pointer px-3 py-2 text-left"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate pr-1 text-sm font-medium">{session.title}</p>
+                    <span className="shrink-0 text-[11px] text-muted-foreground">
+                      {formatSidebarTime(session.updatedAt)}
+                    </span>
+                  </div>
+                  <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                    {last ? last.content : "Start a fresh conversation for this device"}
+                  </p>
+                </button>
+
+                <div className="flex items-center justify-end px-2 pb-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 gap-1.5 rounded-md px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    disabled={isDeletingSessionId === session.id}
+                    onClick={() => setPendingDeleteSession(session)}
+                  >
+                    {isDeletingSessionId === session.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-3.5 w-3.5" />
+                    )}
+                    Delete
+                  </Button>
                 </div>
-                <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                  {last ? last.content : "Start a fresh conversation for this device"}
-                </p>
-              </button>
+              </div>
             );
           })}
         </div>
@@ -541,14 +659,48 @@ export function ChatInterface({ deviceId, device }: ChatInterfaceProps) {
           <div className="mx-auto flex w-full max-w-4xl flex-col px-4 pb-6 pt-6 md:px-6">
             {activeSession && activeSession.messages.length > 0 ? (
               <div className="space-y-5">
-                {activeSession.messages.map((message) => (
-                  <ChatMessage
-                    key={message.id}
-                    role={message.role}
-                    content={message.content}
-                    timestamp={message.timestamp}
-                  />
-                ))}
+                {activeSession.messages.map((message, index) => {
+                  const previousMessage =
+                    index > 0 ? activeSession.messages[index - 1] : undefined;
+
+                  return (
+                    <div key={message.id} className="space-y-1.5">
+                      <ChatMessage
+                        role={message.role}
+                        content={message.content}
+                        timestamp={message.timestamp}
+                      />
+
+                      {message.role === "assistant" && (
+                        <div className="flex justify-start pl-11">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 gap-1.5 rounded-md px-2 text-xs"
+                            onClick={() => copyAssistantMessage(message)}
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                            {copiedMessageId === message.id ? "Copied" : "Copy"}
+                          </Button>
+
+                          {previousMessage?.role === "user" && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="ml-1 h-7 gap-1.5 rounded-md px-2 text-xs"
+                              onClick={() => setComposerValue(previousMessage.content)}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              Edit query
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <div className="mx-auto w-full max-w-2xl rounded-2xl border border-border bg-card p-6 shadow-sm">
@@ -557,7 +709,7 @@ export function ChatInterface({ deviceId, device }: ChatInterfaceProps) {
                   This chat is grounded in the selected device context, historical readings, and prediction history. Ask for analysis, anomaly detection, risk explanation, or action recommendations.
                 </p>
                 <div className="mt-5">
-                  <ChatSuggestions onSelect={handleSendMessage} disabled={isLoading} />
+                  <ChatSuggestions onSelect={sendMessage} disabled={isLoading} />
                 </div>
               </div>
             )}
@@ -579,10 +731,61 @@ export function ChatInterface({ deviceId, device }: ChatInterfaceProps) {
 
         <div className="border-t border-border bg-background/95 px-4 py-4 backdrop-blur md:px-6">
           <div className="mx-auto w-full max-w-4xl">
-            <ChatInput onSend={handleSendMessage} disabled={isLoading} />
+            <ChatInput
+              onSend={sendMessage}
+              disabled={isLoading}
+              value={composerValue}
+              onValueChange={setComposerValue}
+              submitLabel={composerValue.trim() ? "Resend query" : "Send message"}
+            />
           </div>
         </div>
       </div>
+
+      <Dialog
+        open={Boolean(pendingDeleteSession)}
+        onOpenChange={(open) => {
+          if (!open && !isDeletingSessionId) {
+            setPendingDeleteSession(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md" showCloseButton={!isDeletingSessionId}>
+          <DialogHeader>
+            <DialogTitle>Delete chat permanently?</DialogTitle>
+            <DialogDescription>
+              This action cannot be undone. All messages from this chat session will be removed.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setPendingDeleteSession(null)}
+              disabled={Boolean(isDeletingSessionId)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={!pendingDeleteSession || Boolean(isDeletingSessionId)}
+              onClick={() => {
+                if (pendingDeleteSession) {
+                  handleDeleteSession(pendingDeleteSession);
+                }
+              }}
+            >
+              {isDeletingSessionId ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete permanently"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
