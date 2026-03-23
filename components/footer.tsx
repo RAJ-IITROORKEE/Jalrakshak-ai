@@ -34,9 +34,9 @@ export function Footer() {
           <p>© 2026 JalRakshak.AI — All Rights Reserved</p>
           <p>
             Designed &amp; Developed by{" "}
-            <span className="font-semibold text-primary">DualCode Team</span>
+            <span className="font-semibold text-primary">DualCore Team</span>
             {" "}for{" "}
-            <span className="font-medium text-foreground">Microsoft AI Unlock Hackathon</span>
+            <span className="font-medium text-foreground">Microsoft AI Unlocked Hackathon</span>
             {" "}· AI for India Track
           </p>
         </div>

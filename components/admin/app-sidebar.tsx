@@ -13,7 +13,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, Droplets, LayoutDashboard, Radio, Server } from "lucide-react";
+import { ArrowLeft, Droplets, LayoutDashboard, MailQuestion, Radio, Server } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -32,6 +32,11 @@ const navItems = [
     title: "Live Data",
     href: "/admin/live-data",
     icon: Radio,
+  },
+  {
+    title: "Contacts",
+    href: "/admin/contacts",
+    icon: MailQuestion,
   },
 ];
 

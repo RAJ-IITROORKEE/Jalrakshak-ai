@@ -6,6 +6,7 @@ import { DeviceCard } from "@/components/device-card";
 import { HeroSection } from "@/components/hero-section";
 import { StatsBar } from "@/components/stats-bar";
 import { ModelSimulator } from "@/components/model-simulator";
+import { AiChatButton } from "@/components/ai-chat-button";
 
 import { Wifi, WifiOff, RefreshCw, FlaskConical, X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -201,6 +202,8 @@ export default function DashboardPage() {
             Model Simulator
             {simOpen && <X className="h-3 w-3 ml-0.5 opacity-60" />}
           </button>
+
+          <AiChatButton href="/device" label="AI Chat" />
         </div>
       </div>
 

@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
+import { AiChatButton } from "@/components/ai-chat-button";
 import { cn } from "@/lib/utils";
 import {
   Droplets,
@@ -21,10 +22,8 @@ import {
   ChevronUp,
   WifiOff,
   Wifi,
-  MessageSquare,
 } from "lucide-react";
 import { useState } from "react";
-import Link from "next/link";
 import { SensorHistoryChart } from "@/components/sensor-history-chart";
 
 interface DeviceCardProps {
@@ -299,11 +298,7 @@ export function DeviceCard({ device, history, isOffline = false }: DeviceCardPro
             </button>
 
             {/* AI Chat button */}
-            <Link href={`/device/${device.deviceId}/chat`} className="block w-full">
-              <button className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-primary/50 bg-primary/5 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/10">
-                <MessageSquare className="h-3.5 w-3.5" /> AI Chat
-              </button>
-            </Link>
+            <AiChatButton href={`/device/${device.deviceId}/chat`} label="Start AI Chat" fullWidth />
 
             {expanded && (
               <div className="space-y-4">
