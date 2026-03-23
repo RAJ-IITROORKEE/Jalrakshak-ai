@@ -164,3 +164,8 @@ body {
 .animate-accordion-down { animation: accordion-down 0.2s ease-out; }
 .animate-accordion-up   { animation: accordion-up 0.2s ease-out; }
 
+@keyframes top-loader-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(420%); }
+}
+

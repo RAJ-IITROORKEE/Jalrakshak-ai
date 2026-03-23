@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { SensorReading } from "@/types";
 import { prisma } from "@/lib/prisma";
 import { predictWaterQuality } from "@/lib/predict";
+import { createAlertNotification } from "@/lib/alert-notifications";
 
 const TTN_SECRET = process.env.TTN_WEBHOOK_SECRET || null;
 
@@ -191,6 +192,21 @@ export async function POST(req: NextRequest) {
         totalReadings:    { increment: 1 },
       },
     });
+
+    if (pred) {
+      await createAlertNotification({
+        readingId: reading.id,
+        deviceId: reading.deviceId,
+        deviceName: reading.deviceName,
+        predictionStatus: pred.water_status,
+        predictionRiskLevel: pred.risk_level,
+        predictionScore: pred.safety_score,
+        predictionConfidence: pred.confidence,
+        predictionCauses: pred.possible_causes,
+        predictionActions: pred.recommended_actions,
+        predictionFutureRisk: pred.future_risk,
+      });
+    }
 
     console.log(`[JalRakshak] ✅ Saved to MongoDB | device=${deviceId}`);
   } catch (dbErr) {

@@ -3,6 +3,8 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AppToaster } from "@/components/app-toaster";
+import { Suspense } from "react";
+import { TopLoader } from "@/components/layout/top-loader";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -34,6 +36,9 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen flex flex-col`}
       >
         <ThemeProvider>
+          <Suspense fallback={null}>
+            <TopLoader />
+          </Suspense>
           {children}
           <AppToaster />
         </ThemeProvider>

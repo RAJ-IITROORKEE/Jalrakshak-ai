@@ -25,6 +25,12 @@ export function Footer() {
             <Link href="/about" className="hover:text-foreground transition-colors">About</Link>
             <Link href="/docs" className="hover:text-foreground transition-colors">Docs</Link>
             <Link href="/contact" className="hover:text-foreground transition-colors">Contact</Link>
+            <Link
+              href="/admin"
+              className="rounded-md border border-border px-2 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent"
+            >
+              Admin
+            </Link>
           </nav>
         </div>
 

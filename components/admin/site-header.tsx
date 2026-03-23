@@ -3,6 +3,7 @@
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { AdminNotificationsBell } from "@/components/admin/admin-notifications-bell";
 
 interface SiteHeaderProps {
   title?: string;
@@ -15,7 +16,10 @@ export function SiteHeader({ title = "Admin Panel" }: SiteHeaderProps) {
       <Separator orientation="vertical" className="mr-2 h-4" />
       <div className="flex flex-1 items-center justify-between">
         <h1 className="text-base font-semibold">{title}</h1>
-        <ThemeToggle />
+        <div className="flex items-center gap-1">
+          <AdminNotificationsBell />
+          <ThemeToggle />
+        </div>
       </div>
     </header>
   );

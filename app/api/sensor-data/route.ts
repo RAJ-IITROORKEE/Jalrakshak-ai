@@ -16,6 +16,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { SensorReading } from "@/types";
 import { predictWaterQuality } from "@/lib/predict";
+import { createAlertNotification } from "@/lib/alert-notifications";
 import type { Reading as PrismaReading, Device as PrismaDevice } from "@prisma/client";
 
 const HISTORY_LIMIT = 50;
@@ -204,6 +205,21 @@ async function syncFromRelay() {
           predictionFutureRisk: pred?.future_risk ?? null,
         },
       });
+
+      if (pred) {
+        await createAlertNotification({
+          readingId,
+          deviceId,
+          deviceName: deviceId,
+          predictionStatus: pred.water_status,
+          predictionRiskLevel: pred.risk_level,
+          predictionScore: pred.safety_score,
+          predictionConfidence: pred.confidence,
+          predictionCauses: pred.possible_causes,
+          predictionActions: pred.recommended_actions,
+          predictionFutureRisk: pred.future_risk,
+        });
+      }
 
       await prisma.device.upsert({
         where: { deviceId },

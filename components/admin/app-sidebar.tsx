@@ -12,10 +12,22 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, Droplets, LayoutDashboard, MailQuestion, Radio, Server } from "lucide-react";
+import {
+  ArrowLeft,
+  Bell,
+  Droplets,
+  LayoutDashboard,
+  LogOut,
+  MailQuestion,
+  Radio,
+  Server,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 const navItems = [
   {
@@ -38,10 +50,33 @@ const navItems = [
     href: "/admin/contacts",
     icon: MailQuestion,
   },
+  {
+    title: "Notifications",
+    href: "/admin/notifications",
+    icon: Bell,
+  },
 ];
 
 export function AppSidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+
+  const handleLogout = async () => {
+    try {
+      const res = await fetch("/api/admin/logout", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok || data.status !== "ok") {
+        throw new Error(data.message || "Logout failed");
+      }
+
+      toast.success("Logged out successfully");
+      router.push("/admin/login");
+      router.refresh();
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to logout");
+    }
+  };
 
   return (
     <Sidebar variant="inset">
@@ -115,19 +150,31 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border pt-2">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              asChild
-              className="h-9 gap-3 rounded-lg px-3 text-sm font-medium text-sidebar-foreground/50 transition-all duration-150 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-            >
-              <Link href="/" className="flex items-center gap-3">
-                <ArrowLeft className="size-4 shrink-0" />
-                <span>Back to App</span>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+        <div className="space-y-1">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                asChild
+                className="h-9 gap-3 rounded-lg px-3 text-sm font-medium text-sidebar-foreground/50 transition-all duration-150 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+              >
+                <Link href="/" className="flex items-center gap-3">
+                  <ArrowLeft className="size-4 shrink-0" />
+                  <span>Back to App</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={handleLogout}
+            className="h-9 w-full justify-start gap-3 rounded-lg px-3 text-sm font-medium text-destructive hover:bg-destructive/10 hover:text-destructive"
+          >
+            <LogOut className="size-4 shrink-0" />
+            Logout
+          </Button>
+        </div>
       </SidebarFooter>
     </Sidebar>
   );
