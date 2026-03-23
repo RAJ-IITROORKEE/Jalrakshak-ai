@@ -21,8 +21,10 @@ import {
   ChevronUp,
   WifiOff,
   Wifi,
+  MessageSquare,
 } from "lucide-react";
 import { useState } from "react";
+import Link from "next/link";
 import { SensorHistoryChart } from "@/components/sensor-history-chart";
 
 interface DeviceCardProps {
@@ -295,6 +297,13 @@ export function DeviceCard({ device, history, isOffline = false }: DeviceCardPro
                 </>
               )}
             </button>
+
+            {/* AI Chat button */}
+            <Link href={`/device/${device.deviceId}/chat`} className="block w-full">
+              <button className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-primary/50 bg-primary/5 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/10">
+                <MessageSquare className="h-3.5 w-3.5" /> AI Chat
+              </button>
+            </Link>
 
             {expanded && (
               <div className="space-y-4">

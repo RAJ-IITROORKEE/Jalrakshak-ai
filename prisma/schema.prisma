@@ -31,7 +31,8 @@ model Device {
   spreadingFactor  Int?
   totalReadings    Int    @default(0)
 
-  readings Reading[]
+  readings     Reading[]
+  chatMessages ChatMessage[]
 
   @@map("devices")
 }
@@ -70,4 +71,24 @@ model Reading {
 
   @@index([deviceId, receivedAt(sort: Desc)])
   @@map("readings")
+}
+
+// ── ChatMessage: AI chat conversation history per device ───────────────────
+model ChatMessage {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  messageId   String   @unique              // crypto.randomUUID()
+  deviceId    String
+  role        String                        // "user" | "assistant" | "system"
+  content     String                        // Message text
+  timestamp   DateTime @default(now())      // When sent
+  tokensUsed  Int?                          // Optional: track API usage
+  model       String   @default("meta-llama/llama-3.3-70b-instruct:free")
+  
+  // Optional: Store context snapshot at time of message
+  contextSnapshot Json?                     // { readings: [...], device: {...} }
+  
+  device Device? @relation(fields: [deviceId], references: [deviceId])
+  
+  @@index([deviceId, timestamp(sort: Desc)])
+  @@map("chat_messages")
 }
