@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
-import { Bell, Loader2, MessageSquare, TriangleAlert } from "lucide-react";
+import { Bell, CheckCheck, Loader2, MessageSquare, TriangleAlert } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,6 +30,7 @@ export function AdminNotificationsBell() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [markingId, setMarkingId] = useState<string | null>(null);
+  const [markingAll, setMarkingAll] = useState(false);
 
   const fetchItems = useCallback(async () => {
     setLoading(true);
@@ -71,6 +72,24 @@ export function AdminNotificationsBell() {
     }
   };
 
+  const markAllAsRead = async () => {
+    if (unreadCount === 0) return;
+    setMarkingAll(true);
+    try {
+      const res = await fetch("/api/admin/notifications", {
+        method: "PATCH",
+      });
+      if (res.ok) {
+        setItems((prev) => prev.map((n) => ({ ...n, isRead: true })));
+        setUnreadCount(0);
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setMarkingAll(false);
+    }
+  };
+
   const unreadBadge = useMemo(() => {
     if (unreadCount <= 0) return null;
     return unreadCount > 9 ? "9+" : String(unreadCount);
@@ -91,9 +110,30 @@ export function AdminNotificationsBell() {
       <DropdownMenuContent align="end" className="w-96">
         <DropdownMenuLabel className="flex items-center justify-between">
           <span>Alert Notifications</span>
-          <Badge variant="outline" className="text-[10px]">
-            {unreadCount} unread
-          </Badge>
+          <div className="flex items-center gap-2">
+            {unreadCount > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 gap-1 px-2 text-[10px] text-muted-foreground hover:text-foreground"
+                disabled={markingAll}
+                onClick={(e) => {
+                  e.preventDefault();
+                  markAllAsRead();
+                }}
+              >
+                {markingAll ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <CheckCheck className="h-3 w-3" />
+                )}
+                Mark all read
+              </Button>
+            )}
+            <Badge variant="outline" className="text-[10px]">
+              {unreadCount} unread
+            </Badge>
+          </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
 

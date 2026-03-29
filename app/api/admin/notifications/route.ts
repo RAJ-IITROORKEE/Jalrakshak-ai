@@ -3,6 +3,28 @@ import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
+export async function PATCH() {
+  try {
+    // Mark all unread notifications as read
+    const result = await prisma.alertNotification.updateMany({
+      where: { isRead: false },
+      data: { isRead: true },
+    });
+
+    return NextResponse.json({
+      status: "ok",
+      message: `Marked ${result.count} notifications as read`,
+      count: result.count,
+    });
+  } catch (error) {
+    console.error("[admin][notifications][PATCH]", error);
+    return NextResponse.json(
+      { status: "error", message: "Failed to mark notifications as read" },
+      { status: 500 }
+    );
+  }
+}
+
 export async function GET(req: NextRequest) {
   try {
     const query = req.nextUrl.searchParams.get("q")?.trim() ?? "";

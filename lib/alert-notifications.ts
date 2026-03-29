@@ -14,11 +14,10 @@ interface AlertPayload {
 }
 
 export async function createAlertNotification(payload: AlertPayload) {
+  // Only create alerts for unsafe water quality readings
   const isUnsafe = payload.predictionStatus === "Unsafe";
-  const hasElevatedRisk =
-    payload.predictionRiskLevel === "High" || payload.predictionRiskLevel === "Moderate";
 
-  if (!isUnsafe && !hasElevatedRisk) {
+  if (!isUnsafe) {
     return;
   }
 
