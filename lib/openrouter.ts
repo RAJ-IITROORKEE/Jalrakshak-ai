@@ -75,6 +75,8 @@ async function requestCompletion(
       model: candidateModel,
       messages,
       stream,
+      max_tokens: 800, // Limit response length for faster responses
+      temperature: 0.7, // Balanced creativity vs consistency
     }),
   });
 }

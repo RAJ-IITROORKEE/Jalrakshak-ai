@@ -66,10 +66,10 @@ export async function POST(req: NextRequest) {
       { role: "system", content: contextStr },
     ];
 
-    // Add conversation history (limit to last 10 messages to avoid token limit)
+    // Add conversation history (limit to last 6 messages for faster responses)
     if (conversationHistory && Array.isArray(conversationHistory)) {
       const recentHistory = conversationHistory
-        .slice(-10)
+        .slice(-6)
         .filter(
           (m): m is { role: "user" | "assistant"; content: string } =>
             (m.role === "user" || m.role === "assistant") &&

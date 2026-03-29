@@ -20,15 +20,18 @@ interface DeviceStats {
  * Check if device is offline (no data in last 2 minutes)
  */
 function isOffline(lastSeen: Date): boolean {
-  return Date.now() - new Date(lastSeen).getTime() > 2 * 60 * 1000; // 2 minutes
+  return Date.now() - new Date(lastSeen).getTime() > 2 * 60 * 1000;
 }
 
 /**
- * Build comprehensive device context for AI
- * @param device - Device metadata
- * @param readings - Historical readings (sorted by timestamp desc)
- * @param stats - Pre-calculated statistics
- * @returns Formatted context string for AI
+ * Format number with fallback
+ */
+function fmt(val: number | null, decimals = 1): string {
+  return val != null ? val.toFixed(decimals) : "N/A";
+}
+
+/**
+ * Build comprehensive device context for AI (optimized for token efficiency)
  */
 export function buildDeviceContext(
   device: Device,
@@ -36,64 +39,38 @@ export function buildDeviceContext(
   stats: DeviceStats
 ): string {
   if (readings.length === 0) {
-    return `
-**Device Information**:
-- Device Name: ${device.deviceName || device.deviceId}
-- Device ID: ${device.deviceId}
-- Status: No data available yet
-- Last Seen: ${new Date(device.lastSeen).toLocaleString()}
-
-⚠️ **Note**: This device has not sent any readings yet. Once data arrives, you'll be able to analyze trends and provide insights.
-`;
+    return `**Device**: ${device.deviceName || device.deviceId} | Status: No data yet | Last seen: ${new Date(device.lastSeen).toLocaleString()}`;
   }
 
-  const latestReading = readings[0];
-  const oldestReading = readings[readings.length - 1];
+  const latest = readings[0];
+  const status = isOffline(device.lastSeen) ? "Offline" : "Live";
   
-  return `
-**Device Information**:
-- Device Name: ${device.deviceName || device.deviceId}
-- Device ID: ${device.deviceId}
-- Status: ${isOffline(device.lastSeen) ? 'Offline ⚠️' : 'Live ✅'}
-- Last Seen: ${new Date(device.lastSeen).toLocaleString()}
-- Total Readings: ${device.totalReadings}
-- Data Range: ${new Date(oldestReading.timestamp).toLocaleDateString()} to ${new Date(latestReading.timestamp).toLocaleDateString()}
+  // Build compact context
+  const lines = [
+    `**Device**: ${device.deviceName || device.deviceId} | ${status} | ${device.totalReadings} readings`,
+    `**Latest** (${new Date(latest.timestamp).toLocaleString()}): pH=${fmt(latest.ph, 2)}, TDS=${fmt(latest.tds, 0)}ppm, Turb=${fmt(latest.turbidity)}NTU, Cond=${fmt(latest.conductivity, 0)}μS/cm, Temp=${fmt(latest.temperature)}°C`,
+    `**Prediction**: ${latest.predictionStatus || "N/A"} (Score: ${latest.predictionScore ?? "N/A"}/100, Risk: ${latest.predictionRiskLevel || "N/A"})`,
+    `**Averages** (${readings.length} readings): pH=${fmt(stats.avgPh, 2)}, TDS=${fmt(stats.avgTds, 0)}ppm, Turb=${fmt(stats.avgTurbidity)}NTU`,
+    `**History**: ${stats.safeCount} Safe (${readings.length > 0 ? ((stats.safeCount / readings.length) * 100).toFixed(0) : 0}%), ${stats.unsafeCount} Unsafe`,
+  ];
 
-**Latest Readings** (${new Date(latestReading.timestamp).toLocaleString()}):
-- pH Level: ${latestReading.ph?.toFixed(2) || 'N/A'}
-- TDS: ${latestReading.tds?.toFixed(0) || 'N/A'} ppm
-- Turbidity: ${latestReading.turbidity?.toFixed(1) || 'N/A'} NTU
-- Conductivity: ${latestReading.conductivity?.toFixed(0) || 'N/A'} μS/cm
-- Temperature: ${latestReading.temperature?.toFixed(1) || 'N/A'}°C
-- AI Prediction: ${latestReading.predictionStatus || 'N/A'} (Score: ${latestReading.predictionScore || 'N/A'}/100, Risk Level: ${latestReading.predictionRiskLevel || 'N/A'})
+  // Add recent trend (last 5 only for efficiency)
+  const recentReadings = readings.slice(0, 5);
+  if (recentReadings.length > 1) {
+    const trend = recentReadings.map((r, i) => 
+      `${i + 1}. ${new Date(r.timestamp).toLocaleDateString()}: pH=${fmt(r.ph, 1)}, TDS=${fmt(r.tds, 0)}, ${r.predictionStatus || "?"}`
+    ).join(" | ");
+    lines.push(`**Recent**: ${trend}`);
+  }
 
-**Historical Statistics** (Last ${readings.length} readings):
-- Average pH: ${stats.avgPh?.toFixed(2) || 'N/A'}
-- Average TDS: ${stats.avgTds?.toFixed(0) || 'N/A'} ppm
-- Average Turbidity: ${stats.avgTurbidity?.toFixed(1) || 'N/A'} NTU
-- Average Conductivity: ${stats.avgConductivity?.toFixed(0) || 'N/A'} μS/cm
-- Safe Readings: ${stats.safeCount} (${readings.length > 0 ? ((stats.safeCount / readings.length) * 100).toFixed(1) : 0}%)
-- Unsafe Readings: ${stats.unsafeCount} (${readings.length > 0 ? ((stats.unsafeCount / readings.length) * 100).toFixed(1) : 0}%)
+  // Add warning if unsafe readings exist
+  if (stats.unsafeCount > 0) {
+    const recentUnsafe = readings.filter(r => r.predictionStatus === "Unsafe").slice(0, 2);
+    const causes = recentUnsafe.flatMap(r => r.predictionCauses || []).slice(0, 3).join("; ");
+    lines.push(`⚠️ ${stats.unsafeCount} unsafe readings. Recent issues: ${causes || "Unknown"}`);
+  }
 
-**Recent Trend** (Last 10 readings):
-${readings
-  .slice(0, Math.min(10, readings.length))
-  .map(
-    (r, i) =>
-      `${i + 1}. ${new Date(r.timestamp).toLocaleDateString()} - pH: ${r.ph?.toFixed(2) || 'N/A'}, TDS: ${r.tds?.toFixed(0) || 'N/A'} ppm, Status: ${r.predictionStatus || 'N/A'}`
-  )
-  .join('\n')}
-
-${
-  stats.unsafeCount > 0
-    ? `\n⚠️ **Warning**: This device has ${stats.unsafeCount} unsafe readings in its history.\n**Recent Issues**: ${readings
-        .filter((r) => r.predictionStatus === 'Unsafe')
-        .slice(0, 3)
-        .map((r) => r.predictionCauses?.join(', ') || 'Unknown cause')
-        .join('; ')}`
-    : '✅ **All Clear**: No unsafe readings detected in recent history.'
-}
-`;
+  return lines.join("\n");
 }
 
 /**

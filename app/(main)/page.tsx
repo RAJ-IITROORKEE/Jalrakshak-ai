@@ -138,8 +138,15 @@ export default function DashboardPage() {
     };
   }, [fetchData]);
 
-  const safeCount = devices.filter((d) => d.prediction?.water_status === "Safe").length;
-  const unsafeCount = devices.filter((d) => d.prediction?.water_status === "Unsafe").length;
+  // Count safe/unsafe based on score for consistency (score >= 50 = safe)
+  const safeCount = devices.filter((d) => {
+    const score = d.prediction?.safety_score;
+    return score !== undefined && score !== null && score >= 50;
+  }).length;
+  const unsafeCount = devices.filter((d) => {
+    const score = d.prediction?.safety_score;
+    return score !== undefined && score !== null && score < 50;
+  }).length;
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">

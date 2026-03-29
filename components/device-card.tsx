@@ -108,9 +108,14 @@ export function DeviceCard({ device, history, isOffline = false }: DeviceCardPro
   const [expanded, setExpanded] = useState(false);
   const { prediction } = device;
 
-  const isSafe = prediction?.water_status === "Safe";
   const safetyScore = prediction?.safety_score ?? null;
-  const riskLevel = prediction?.risk_level;
+  // Determine safety status from score to ensure consistency
+  // Score >= 50 means Safe (matching lib/predict.ts logic)
+  const isSafe = safetyScore !== null ? safetyScore >= 50 : prediction?.water_status === "Safe";
+  // Derive risk level from score for consistency
+  const riskLevel = safetyScore !== null 
+    ? (safetyScore >= 80 ? "Low" : safetyScore >= 50 ? "Moderate" : "High")
+    : prediction?.risk_level;
 
   const scoreColor =
     safetyScore == null
@@ -179,7 +184,7 @@ export function DeviceCard({ device, history, isOffline = false }: DeviceCardPro
                 ) : (
                   <AlertTriangle className="mr-1 h-3 w-3" />
                 )}
-                {prediction.water_status}
+                {isSafe ? "Safe" : "Unsafe"}
               </Badge>
             ) : (
               <Badge variant="outline" className="shrink-0 text-muted-foreground">

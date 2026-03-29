@@ -28,6 +28,7 @@ import {
   Activity,
   AlertTriangle,
   CheckCircle2,
+  ChevronDown,
   Clock3,
   Copy,
   Database,
@@ -41,6 +42,12 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DEFAULT_CHAT_MODEL, isAllowedChatModel } from "@/lib/chat-models";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 
 interface Message {
   id: string;
@@ -645,55 +652,65 @@ export function ChatInterface({ deviceId, device }: ChatInterfaceProps) {
         </div>
       </div>
 
-      <div className="space-y-3 border-b border-sidebar-border p-4">
-        <div className="rounded-xl border border-sidebar-border bg-sidebar-accent/35 p-3">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Device context
-          </p>
-          <p className="mt-1 truncate text-sm font-semibold">
-            {device.deviceName || device.deviceId}
-          </p>
-          <div className="mt-2 flex items-center gap-2">
-            <Badge variant={isOffline ? "outline" : "success"} className="text-[11px]">
-              {isOffline ? "Offline" : "Live"}
-            </Badge>
-            <span className="text-xs text-muted-foreground">
-              {device.totalReadings} readings
-            </span>
-          </div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Last seen {toDate(device.lastSeen).toLocaleString()}
-          </p>
-        </div>
+      <div className="border-b border-sidebar-border px-4 py-2">
+        <Accordion type="multiple" defaultValue={[]} className="w-full">
+          <AccordionItem value="device-context" className="border-0">
+            <AccordionTrigger className="py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground hover:no-underline">
+              Device Info
+            </AccordionTrigger>
+            <AccordionContent>
+              <div className="rounded-xl border border-sidebar-border bg-sidebar-accent/35 p-3">
+                <p className="truncate text-sm font-semibold">
+                  {device.deviceName || device.deviceId}
+                </p>
+                <div className="mt-2 flex items-center gap-2">
+                  <Badge variant={isOffline ? "outline" : "success"} className="text-[11px]">
+                    {isOffline ? "Offline" : "Live"}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">
+                    {device.totalReadings} readings
+                  </span>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Last seen {toDate(device.lastSeen).toLocaleString()}
+                </p>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
 
-        <div className="rounded-xl border border-sidebar-border bg-sidebar-accent/35 p-3">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Predictions snapshot
-          </p>
-          <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
-            <div className="rounded-lg border border-sidebar-border bg-sidebar px-2 py-1.5">
-              <span className="block text-muted-foreground">Safe</span>
-              <span className="font-semibold">{safeCount}</span>
-            </div>
-            <div className="rounded-lg border border-sidebar-border bg-sidebar px-2 py-1.5">
-              <span className="block text-muted-foreground">Unsafe</span>
-              <span className="font-semibold">{unsafeCount}</span>
-            </div>
-          </div>
+          <AccordionItem value="predictions" className="border-0">
+            <AccordionTrigger className="py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground hover:no-underline">
+              Predictions ({safeCount + unsafeCount} total)
+            </AccordionTrigger>
+            <AccordionContent>
+              <div className="rounded-xl border border-sidebar-border bg-sidebar-accent/35 p-3">
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="rounded-lg border border-sidebar-border bg-sidebar px-2 py-1.5">
+                    <span className="block text-muted-foreground">Safe</span>
+                    <span className="font-semibold text-emerald-500">{safeCount}</span>
+                  </div>
+                  <div className="rounded-lg border border-sidebar-border bg-sidebar px-2 py-1.5">
+                    <span className="block text-muted-foreground">Unsafe</span>
+                    <span className="font-semibold text-destructive">{unsafeCount}</span>
+                  </div>
+                </div>
 
-          <div className="mt-3 flex items-center gap-2 text-xs">
-            {latestPrediction === "Unsafe" ? (
-              <AlertTriangle className="h-4 w-4 text-destructive" />
-            ) : (
-              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-            )}
-            <span className="text-muted-foreground">Latest:</span>
-            <span className="font-medium">{latestPrediction ?? "No prediction"}</span>
-            {latestRiskLevel ? (
-              <span className="text-muted-foreground">({latestRiskLevel})</span>
-            ) : null}
-          </div>
-        </div>
+                <div className="mt-3 flex items-center gap-2 text-xs">
+                  {latestPrediction === "Unsafe" ? (
+                    <AlertTriangle className="h-4 w-4 text-destructive" />
+                  ) : (
+                    <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                  )}
+                  <span className="text-muted-foreground">Latest:</span>
+                  <span className="font-medium">{latestPrediction ?? "N/A"}</span>
+                  {latestRiskLevel ? (
+                    <span className="text-muted-foreground">({latestRiskLevel})</span>
+                  ) : null}
+                </div>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
