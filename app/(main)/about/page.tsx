@@ -59,7 +59,27 @@ const team = [
     roleColor: "bg-primary/10 text-primary border-primary/30",
     github: null,
   },
+  {
+    initials: "AP",
+    name: "Abhinav Pandey",
+    email: "abhinav_p@ee.iitr.ac.in",
+    year: "3rd Year B.Tech",
+    branch: "Electrical Engineering",
+    institute: "IIT Roorkee",
+    role: "Member",
+    roleColor: "bg-primary/10 text-primary border-primary/30",
+    github: null,
+  },
 ];
+
+const mentor = {
+  initials: "RT",
+  name: "Dr. Rahul Thakur",
+  title: "Associate Professor, Computer Science & Engineering",
+  institute: "Indian Institute of Technology Roorkee",
+  note:
+    "Lead IoT and leading expert in IoT systems and embedded computing. Supervising this innovative parking management solution as part of the IoT research initiative at IIT Roorkee.",
+};
 
 const techStack = [
   "Next.js 16", "TypeScript", "LoRaWAN", "TTN (The Things Network)",
@@ -183,6 +203,25 @@ export default function AboutPage() {
           </Badge>
           <span className="text-xs text-muted-foreground">Microsoft AI Unlock Hackathon 2026</span>
         </div>
+
+        <h3 className="mb-3 text-base font-semibold text-foreground">Project Supervisor / Mentor</h3>
+        <Card className="mb-6 w-full border-border/60 bg-card/80 overflow-hidden">
+          <CardContent className="p-5 sm:p-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-5">
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-primary/10 ring-2 ring-primary/30 text-2xl font-bold text-primary select-none">
+                {mentor.initials}
+              </div>
+              <div className="min-w-0 flex-1">
+                <h4 className="text-2xl font-bold text-foreground leading-tight">{mentor.name}</h4>
+                <p className="mt-1 text-base font-semibold text-primary">{mentor.title}</p>
+                <p className="text-sm text-muted-foreground">{mentor.institute}</p>
+                <p className="mt-5 text-sm leading-relaxed text-foreground/90">{mentor.note}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <h3 className="mb-3 text-base font-semibold text-foreground">Core Team Members</h3>
         <div className="grid gap-4 sm:grid-cols-2">
           {team.map((member) => (
             <Card key={member.name} className="border-border/60 overflow-hidden">
