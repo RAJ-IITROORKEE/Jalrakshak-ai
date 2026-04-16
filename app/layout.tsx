@@ -23,6 +23,11 @@ export const metadata: Metadata = {
     "Protecting India's water resources — Microsoft AI Unlock Hackathon, AI for India Track.",
   keywords: ["water quality", "IoT", "LoRaWAN", "AI", "JalRakshak", "India", "hackathon"],
   authors: [{ name: "DualCode Team" }],
+  icons: {
+    icon: "/jalrakhsak-ai-favicon.png",
+    shortcut: "/jalrakhsak-ai-favicon.png",
+    apple: "/jalrakhsak-ai-favicon.png",
+  },
 };
 
 export default function RootLayout({
